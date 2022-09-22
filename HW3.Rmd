@@ -1,0 +1,13 @@
+---
+title: "HW3"
+output: html_notebook
+---
+```{r}
+ad = read.csv('Advertising_Updated.csv')
+lm <- lm(Sales~., data=ad)
+new.dat <- data.frame(TV=200, Radio=10, Newspaper=20)
+
+val = predict.lm(lm,new.dat,, interval = 'prediction')
+val
+```
+

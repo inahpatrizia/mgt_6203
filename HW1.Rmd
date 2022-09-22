@@ -1,0 +1,188 @@
+---
+title: "Homework 1"
+output:
+  pdf_document: default
+  html_notebook: default
+date: "9/16/2020"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, tidy=TRUE)
+library(knitr)
+library(dplyr)
+library(ggplot2)
+library(pROC)
+```
+
+
+### Question 1
+#### Use the  airbnb_data.csv provided and answer the following questions (Q1a. b. c. and d.) on Linear Regression.
+
+Importing the data:
+```{r}
+airbnb <- read.csv("airbnb_data.csv", header = TRUE)
+summary(airbnb)
+```
+
+#### a) Fit a multiple linear regression model using price as the response variable and all others as predictor variables (Note: remove 'id' columns). Which variables are statistically significant in determining the price?
+
+```{r}
+# Removing the id columns
+model_data = select(airbnb, -c('room_id', 'survey_id', 'host_id', 'city'))
+
+# Fitting & outputting the model
+airbnb_model <- lm(price ~ room_type + reviews + overall_satisfaction + accommodates + bedrooms, data = model_data)
+summary(airbnb_model)
+```
+Based on the p value, the room type (room_typePrivate room and room_typeShared room columns in the data set) and reviews are not statistically significant as their p value is greater than 0.05. The remaining predictors (overall_satisfaction, accomodates and bedrooms) are the statisically significant predictors of price.
+
+##### b) Interpret the coefficients for predictors: room type(Shared Room), bedrooms?
+Room Type (Shared Room): if the Airbnb property is a shared room, the price will decrease by $76.68 
+Bedrooms: the addition of one extra bedroom will increase the price by $85.65
+
+##### c) Predict the price (nearest dollar) for a listing with the following factors: bedrooms = 1, accommodates = 2, reviews = 70, overall_satisfaction = 4, and room_type= 'Private room'.
+```{r}
+listing = data.frame(bedrooms = 1, accommodates = 2, reviews = 870, overall_satisfaction = 4, room_type = "Private room" )
+predict(airbnb_model, newdata = listing)
+```
+Based on the specs of the given listing and the model fitted in part a, the price of this listing is $75.
+
+##### d) Identify outliers using Cook's distance approach. Remove points having Cook's distance > 1. Rerun the model after the removal of these points and print the summary.
+
+```{r message = FALSE}
+# Calculate Cook's distance
+cooks_dist <- cooks.distance(airbnb_model)
+
+# Graphing Cook's distance
+sample_size <- nrow(model_data)
+plot(cooks_dist, pch="*", cex=2, main="Influential Data Points by Cook's Distance")
+abline(h = 1, col="red")  # add cutoff line
+
+# Identifying whic points have Cook's distance > 1 and removing them from the data set
+influential <- as.numeric(names(cooks_dist)[(cooks_dist > 1)])
+model_data2 <- model_data[-influential,]
+
+# Creating a new model based on the data without the influential points 
+airbnb_model2 <- lm(price ~ room_type + reviews + overall_satisfaction + accommodates + bedrooms, data = model_data2)
+summary(airbnb_model2)
+```
+After removing the influential points, the room type is now statistically significant. The R squared and adj. R squared value of this model is better than the previous model that includes the influential points.
+
+
+### Question 2
+#### Use the direct_marketing.csv provided and answer the following questions (Q2.a and Q2.b) on Linear Regression.
+
+Importing the data:
+```{r message = FALSE}
+dir_market <- read.csv("direct_marketing.csv", header = TRUE)
+summary(dir_market)
+```
+#### Create indicator variables for the ‘History’ column. Considering the base case as None (i.e., create Low, Medium and High variables with 1 denoting the positive case and 0 the negative) and few additional variables LowSalary, MediumSalary and HighSalary based on the customer history type i.e., MediumSalary = Medium*Salary etc.
+
+```{r, tidy=TRUE}
+# Creating indicator variables for History column
+dir_market<- dir_market %>% mutate(history_low = ifelse(History=="Low",1,0)) %>% mutate(history_med = ifelse(History=="Medium",1,0))%>% mutate(history_high = ifelse(History=="High",1,0))
+
+# Creating interaction terms
+dir_market<- dir_market %>% mutate(LowSalary = history_low*Salary) %>% mutate(MediumSalary=history_med*Salary) %>% mutate(HighSalary = history_high*Salary)
+
+summary(dir_market)
+```
+
+#### a) Fit a multiple linear regression model using AmountSpent as the response variable and the indicator variables along with their salary variables as the predictors.
+
+```{r}
+# Creating the model
+dm_model <- lm(AmountSpent ~ history_low + history_med + history_high + LowSalary + MediumSalary + HighSalary, data = dir_market)
+
+summary(dm_model)
+```
+
+#### b) What is the amount spent by a customer for each historic type provided their salary is $10,000 based on the model constructed in part a?
+
+```{r}
+none_sal = data.frame(history_low = 0, history_med = 0, history_high = 0, LowSalary = 0, MediumSalary = 0, HighSalary= 0)
+low_sal = data.frame(history_low = 1, history_med = 0, history_high = 0, LowSalary = 10000, MediumSalary = 0, HighSalary= 0)
+med_sal = data.frame(history_low = 0, history_med = 1, history_high = 0, LowSalary = 0, MediumSalary = 10000, HighSalary= 0)
+high_sal = data.frame(history_low = 0, history_med = 0, history_high = 1, LowSalary = 0, MediumSalary = 0, HighSalary=10000)
+
+none_amountspent = predict(dm_model, newdata = none_sal)
+low_amountspent = predict(dm_model, newdata = low_sal)
+med_amountspent = predict(dm_model, newdata = med_sal)
+high_amountspent = predict(dm_model, newdata = high_sal)
+
+cat(none_amountspent,'\n',low_amountspent,'\n',med_amountspent,'\n',high_amountspent)
+```
+Given a salary of $10,000, a customer with no history will spend $124, a customer with low history will spend $30, a customer with medium history will spend $84 and a customer with high history will spend $92.
+
+#### Use the airbnb_data.csv Preview the document provided and answer the following questions (Q2.c and Q2.d) on Linear Regression. Perform Log transformation for the variables price and overall_satisfaction, make necessary transformations suggested in the class.
+
+#### c) Fit all four models i.e., linear-linear, linear-log, log-linear, and log-log regression models using price as the response variable and overall_satisfaction as the predictor.
+
+```{r}
+# Generating the four lin/log models. Since overall_statisfaction has values of 0, I use the function log1p instead of log to add 1 to every data point
+lin_lin <- lm(price ~ overall_satisfaction, data = airbnb)
+lin_log <- lm(price ~ log1p(overall_satisfaction), data = airbnb)
+log_lin <- lm(log(price) ~ overall_satisfaction, data = airbnb)
+log_log <- lm(log(price) ~ log1p(overall_satisfaction), data = airbnb)
+```
+#### d) Which of the four models has the best R2? Do you have any comments on the choice of the dependent variable?
+
+```{r}
+cat("R Squared Values:",'\n',"Linear-Linear:",summary(lin_lin)$r.squared,'\n',"Linear-Log:",summary(lin_log)$r.squared,'\n',"Log-Linear",summary(log_lin)$r.squared,'\n',"Log-Log", summary(log_log)$r.squared,'\n')
+
+summary(lin_log)
+```
+The model with the best R squared value is the linear-log model. However, the R squared value for all 4 models is very low. Even though overall satisfaction appears to be statistically significant, the low R squared value is an indication that overall satisfaction does not explain much of the variation in the price and another dependant variable should replace overall satisfaction as a predictor or be addded to the model.
+
+### Question 3
+#### The attached titanic_data.csv has been cleaned to remove all rows which contain missing values. We will perform logistic regression on this cleaned dataset.
+###### The dataset contains the following columns:
+###### ‘Name’ - Passenger Name - factor
+###### ‘PClass’ - Passenger Class (1st, 2nd, 3rd) - factor
+###### ‘Age’ - Passenger Age - number
+###### ‘Sex’ - Passenger Sex – female, male
+###### ‘Survived’ – 1 if passenger survived, 0 if not - number
+#### After converting the survived variable to be a factor with two levels, 0 and 1, perform logistic regression on the dataset using ‘Survived’ as the response and ‘Sex’ as the explanatory variable.
+
+#### a) Display the model summary.
+
+```{r}
+# Importing the data
+titanic <- read.csv("titanic_data.csv", header = TRUE)
+
+# Converting Survived to a factor and Sex to an indicator variable
+titanic$Survived <- as.factor(titanic$Survived)
+titanic<- titanic %>%
+  mutate(Sex = ifelse(Sex=="female",1,0))
+
+# Fitting the model
+titanic_model <- glm(Survived ~ Sex, data = titanic, family = 'binomial')
+summary(titanic_model)
+```
+#### b) What does the value of the intercept coefficient represent in this model?
+
+The intercept coefficient of -1.3545 is the log odds for the base case of Sex = 0 or Sex = male. 
+It is used to calculate the probability that Survived = 1, given that a person is male in p(x) = exp(b0+b1x)/[1 + exp(b0+b1x)]
+
+#### c) Determine the probability of survival for females.
+```{r}
+b0 = coef(titanic_model)[1]
+b1 = coef(titanic_model)[2]
+x = 1
+p_female = exp(b0+b1*x)/(1 + exp(b0+b1*x))
+
+print(p_female)
+```
+The probability of survival for females is 75.35%.
+
+#### d) Determine the probability of survival for males.
+```{r}
+b0 = coef(titanic_model)[1]
+b1 = coef(titanic_model)[2]
+x = 0
+p_male = exp(b0+b1*x)/(1 + exp(b0+b1*x))
+
+print(p_male)
+```
+The probability of survival for males is 20.51%.
